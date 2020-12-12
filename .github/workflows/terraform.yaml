@@ -1,0 +1,57 @@
+name: "Terraform"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  terraform:
+    name: "Terraform"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 0.13.5
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check
+        working-directory: terraform/
+
+      - name: Terraform Lint
+        id: lint
+        uses: actionshub/terraform-lint@main
+
+      - name: Checkov Github Action
+        id: checkov
+        uses: bridgecrewio/checkov-action@v13
+        with:
+          directory: terraform/
+          quiet: true
+        continue-on-error: true
+
+      - uses: actions/github-script@0.9.0
+        if: github.event_name == 'pull_request'
+        env:
+          SECURITY: "${{ steps.checkov.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `
+            #### Terraform Format 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Lint 💩\`${{ steps.lint.outcome }}\`
+            #### Security Checks 🛡️\`${{ steps.checkov.outcome }}\`
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+              
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
